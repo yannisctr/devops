@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Liste de tâches</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+<main>
+  <h1>Liste de tâches</h1>
+  <form id="task-form">
+    <label>Titre <input name="title" maxlength="160" required></label>
+    <label><span id="priority-label">Priorité</span>
+      <select name="priority" aria-labelledby="priority-label"><option value="low">Basse</option><option value="normal" selected>Normale</option><option value="high">Haute</option></select>
+    </label>
+    <label>Échéance <input name="due_date" type="date" min="1000-01-01" max="9999-12-31"></label>
+    <button id="save">Ajouter</button>
+    <button id="cancel" type="button" hidden>Annuler</button>
+  </form>
+  <section aria-label="Tâches">
+    <div class="filters">
+      <label>Rechercher <input id="search" type="search"></label>
+      <label><span id="filter-label">Statut</span>
+        <select id="filter" aria-labelledby="filter-label"><option value="all">Toutes</option><option value="open">À faire</option><option value="done">Terminées</option></select>
+      </label>
+    </div>
+    <p id="remaining" aria-live="polite"></p>
+    <p id="error" role="alert" hidden></p>
+    <button id="retry" type="button" hidden>Réessayer le chargement</button>
+    <ul id="tasks"></ul>
+  </section>
+</main>
+</body>
+</html>

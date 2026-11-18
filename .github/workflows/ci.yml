@@ -1,0 +1,68 @@
+name: CI et images Docker Hub
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      COMPOSE_PROJECT_NAME: todo-ci
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Syntaxe PHP, JavaScript et Bash
+        run: |
+          set -euo pipefail
+          find backend -name '*.php' -print0 | xargs -0 -r -n 1 php -l
+          node --check frontend/app.js
+          for script in scripts/*.sh; do bash -n "$script"; done
+      - name: Configurations Compose et Kubernetes
+        run: |
+          set -euo pipefail
+          docker compose config -q
+          kubectl kustomize k8s/val > "$RUNNER_TEMP/val.yaml"
+          kubectl kustomize k8s/prod > "$RUNNER_TEMP/prod.yaml"
+      - name: Construction et démarrage des trois images
+        run: docker compose up -d --build --wait
+      - name: CRUD, validation HTTP et persistance MySQL
+        env:
+          SMOKE_RESTART_COMMAND: docker compose up -d --force-recreate --no-deps --wait --wait-timeout 180 database
+        run: bash scripts/smoke-test.sh
+      - name: Arrêt de DEV
+        run: docker compose stop
+      - name: Journaux en cas d’échec
+        if: failure()
+        run: docker compose logs --no-color
+      - name: Publication du SHA validé sur Docker Hub
+        if: github.ref == 'refs/heads/develop' && github.event_name != 'pull_request'
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$DOCKERHUB_USERNAME" || -z "$DOCKERHUB_TOKEN" ]]; then
+            echo "::warning::Publication désactivée. Configurer les secrets DOCKERHUB_USERNAME et DOCKERHUB_TOKEN."
+            echo "Publication ignorée : secrets Docker Hub absents." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          printf '%s' "$DOCKERHUB_TOKEN" | docker login --username "$DOCKERHUB_USERNAME" --password-stdin
+          trap 'docker logout >/dev/null' EXIT
+          for service in frontend backend database; do
+            image="$DOCKERHUB_USERNAME/tp-$service:$GITHUB_SHA"
+            docker tag "${COMPOSE_PROJECT_NAME}-$service" "$image"
+            docker push "$image"
+            printf -- '- `%s`\n' "$image" >> "$GITHUB_STEP_SUMMARY"
+          done
+      - name: Nettoyage du runner éphémère
+        if: always()
+        run: docker compose down --volumes
